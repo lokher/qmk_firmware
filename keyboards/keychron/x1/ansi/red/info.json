@@ -4,7 +4,7 @@
         "device_version": "1.0.0"
     },
     "features": {
-        "led_matrix": true
+        "led_matrix": false
     },
     "led_matrix": {
         "driver": "ckled2001",

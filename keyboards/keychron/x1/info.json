@@ -3,8 +3,8 @@
     "manufacturer": "Keychron",
     "url": "https://github.com/Keychron",
     "maintainer": "lalalademaxiya1",
-    "processor": "STM32F401",
-    "bootloader": "stm32-dfu",
+    "processor": "AT32F405",
+    "bootloader": "at32-dfu",
     "usb": {
         "vid": "0x362D"
     },
