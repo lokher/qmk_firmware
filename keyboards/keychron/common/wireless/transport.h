@@ -40,3 +40,8 @@ void usb_power_connect(void);
 void usb_power_disconnect(void);
 void usb_transport_enable(bool enable);
 void usb_remote_wakeup(void);
+
+#if (EECONFIG_KB_DATA_SIZE) == 1
+uint8_t eeprom_read_transport(void);
+void eeprom_update_transport(uint8_t val) ;
+#endif

@@ -31,9 +31,19 @@
 bool     is_siri_active = false;
 uint32_t siri_timer     = 0;
 
-static uint8_t mac_keycode[4] = {KC_LOPT, KC_ROPT, KC_LCMD, KC_RCMD};
+static uint8_t mac_keycode[4] = {
+    KC_LOPT,
+    KC_ROPT,
+    KC_LCMD,
+    KC_RCMD,
+};
 
-static key_combination_t key_comb_list[4] = {{2, {KC_LWIN, KC_TAB}}, {2, {KC_LWIN, KC_E}}, {3, {KC_LSFT, KC_LCMD, KC_4}}, {2, {KC_LWIN, KC_C}}};
+static key_combination_t key_comb_list[4] = {
+    {2, {KC_LWIN, KC_TAB}},
+    {2, {KC_LWIN, KC_E}},
+    {3, {KC_LSFT, KC_LCMD, KC_4}},
+    {2, {KC_LWIN, KC_C}},
+};
 
 bool process_record_keychron_common(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
@@ -110,12 +120,11 @@ static void encoder_pad_cb(void *param) {
 void encoder_cb_init(void) {
     pin_t encoders_pad_a[] = ENCODERS_PAD_A;
     pin_t encoders_pad_b[] = ENCODERS_PAD_B;
-    for (uint32_t i=0; i<NUM_ENCODERS; i++)
-    {
+    for (uint32_t i = 0; i < NUM_ENCODERS; i++) {
         palEnableLineEvent(encoders_pad_a[i], PAL_EVENT_MODE_BOTH_EDGES);
         palEnableLineEvent(encoders_pad_b[i], PAL_EVENT_MODE_BOTH_EDGES);
-        palSetLineCallback(encoders_pad_a[i], encoder_pad_cb, (void*)i);
-        palSetLineCallback(encoders_pad_b[i], encoder_pad_cb, (void*)i);
+        palSetLineCallback(encoders_pad_a[i], encoder_pad_cb, (void *)i);
+        palSetLineCallback(encoders_pad_b[i], encoder_pad_cb, (void *)i);
     }
 }
 #endif

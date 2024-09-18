@@ -19,6 +19,9 @@
 #include "config.h"
 #include "wireless.h"
 
+#define P24G_HOST_INDEX 24
+#define USB_HOST_INDEX 34
+
 /* Indication of pairing */
 #ifndef INDICATOR_CONFIG_PARING
 #    define INDICATOR_CONFIG_PARING {INDICATOR_BLINK, 1000, 1000, 0, true, 0};
@@ -42,6 +45,11 @@
 /* Uint: Second */
 #ifndef DISCONNECTED_BACKLIGHT_DISABLE_TIMEOUT
 #    define DISCONNECTED_BACKLIGHT_OFF_DELAY_TIME 40
+#endif
+
+/* Uint: Second */
+#ifndef USB_DISCONNECTED_BACKLIGHT_DISABLE_TIMEOUT
+#    define USB_DISCONNECTED_BACKLIGHT_DISABLE_TIMEOUT 3
 #endif
 
 /* Uint: Second, the timer restarts on key activities. */

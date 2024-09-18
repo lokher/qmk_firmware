@@ -244,12 +244,52 @@ void lpm_task(void) {
         lpm_timer_buffer = 0;
     }
 
-    if (usb_power_connected() && USBD1.state == USB_STOP) {
-        usb_event_queue_init();
-        init_usb_driver(&USB_DRIVER);
-    }
+#ifdef TRANSPORT_SOFT_SWITCH_ENABLE
+    if (lpm_time_up && !indicator_is_running() && lpm_is_kb_idle()) {
+            bool lpm_continue = false;
+            if (get_transport() == TRANSPORT_USB) {
+                if (!usb_power_connected() && (USBD1.state  == USB_SUSPENDED || USBD1.state == USB_STOP)
+#ifdef LED_MATRIX_ENABLE
+                    && (!led_matrix_is_enabled() || (led_matrix_is_enabled() && led_matrix_is_driver_shutdown()) )
+#endif
+#ifdef RGB_MATRIX_ENABLE
+                    && (!rgb_matrix_is_enabled () || (rgb_matrix_is_enabled() && rgb_matrix_is_driver_shutdown()) )
+#endif
+                ) {
+                    lpm_continue = true;
+                }
+            } else {
 
-    if ((get_transport() == TRANSPORT_BLUETOOTH || get_transport() == TRANSPORT_P2P4) && lpm_time_up && !indicator_is_running() && lpm_is_kb_idle()) {
+#if defined(LED_MATRIX_ENABLE) || defined(RGB_MATRIX_ENABLE)
+                if (
+#ifdef LED_MATRIX_ENABLE
+                (!led_matrix_is_enabled() || (led_matrix_is_enabled() && (led_matrix_is_driver_shutdown() || (wireless_get_state() == WT_CONNECTED && led_matrix_timeouted()))))
+#endif
+#ifdef RGB_MATRIX_ENABLE
+                (!rgb_matrix_is_enabled () || (rgb_matrix_is_enabled() && (rgb_matrix_is_driver_shutdown() || (wireless_get_state() == WT_CONNECTED && rgb_matrix_timeouted()))))
+#endif
+                ) {
+                     lpm_continue = true;
+                }
+#endif
+            }
+
+            if (lpm_continue)
+            {
+                 //if ( !lpm_any_matrix_action() && !battery_power_on_sample()) {
+                 if ( !lpm_any_matrix_action() ) {
+                    if (pre_enter_low_power_mode(LOW_POWER_MODE)) {
+                        enter_power_mode(LOW_POWER_MODE);
+                        lpm_wakeup();
+                        lpm_timer_reset();
+                        report_buffer_init();
+                        lpm_set(PM_RUN);
+                    }
+                 }
+            }
+        }
+#else
+    if ((get_transport() & TRANSPORT_WIRELESS) && lpm_time_up && !indicator_is_running() && lpm_is_kb_idle()) {
 #if defined(LED_MATRIX_ENABLE) || defined(RGB_MATRIX_ENABLE)
         if (
 #    ifdef LED_MATRIX_ENABLE
@@ -275,4 +315,5 @@ void lpm_task(void) {
             }
         }
     }
+#endif
 }

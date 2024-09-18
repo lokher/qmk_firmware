@@ -38,10 +38,22 @@ bool process_record_keychron_wireless(uint16_t keycode, keyrecord_t *record) {
 
     switch (keycode) {
         case BT_HST1 ... BT_HST3:
-            if (get_transport() == TRANSPORT_BLUETOOTH) {
+#ifndef TRANSPORT_SOFT_SWITCH_ENABLE
+            if (get_transport() == TRANSPORT_BLUETOOTH)
+#endif
+            {
                 if (record->event.pressed) {
-                    host_idx = keycode - BT_HST1 + 1;
-
+#ifdef TRANSPORT_SOFT_SWITCH_ENABLE
+#    if (EECONFIG_KB_DATA_SIZE > 0)
+                    if (eeprom_read_transport() != TRANSPORT_BLUETOOTH) {
+                        set_transport(TRANSPORT_BLUETOOTH);
+                        eeprom_update_transport(TRANSPORT_BLUETOOTH);
+                    }
+#    else
+                    set_transport(TRANSPORT_BLUETOOTH);
+#    endif
+#endif
+                    host_idx          = keycode - BT_HST1 + 1;
                     pairing_key_timer = timer_read32();
                     wireless_connect_ex(host_idx, 0);
                 } else {
@@ -50,11 +62,24 @@ bool process_record_keychron_wireless(uint16_t keycode, keyrecord_t *record) {
                 }
             }
             break;
-        case P2P4G:
-            if (get_transport() == TRANSPORT_P2P4) {
-                if (record->event.pressed) {
-                    host_idx = P24G_INDEX;
 
+        case P2P4G:
+#ifndef TRANSPORT_SOFT_SWITCH_ENABLE
+            if (get_transport() == TRANSPORT_P2P4)
+#endif
+            {
+                if (record->event.pressed) {
+#ifdef TRANSPORT_SOFT_SWITCH_ENABLE
+#    if (EECONFIG_KB_DATA_SIZE > 0)
+                    if (eeprom_read_transport() != TRANSPORT_P2P4) {
+                        set_transport(TRANSPORT_P2P4);
+                        eeprom_update_transport(TRANSPORT_P2P4);
+                    }
+#    else
+                    set_transport(TRANSPORT_P2P4);
+#    endif
+#endif
+                    host_idx          = P24G_INDEX;
                     pairing_key_timer = timer_read32();
                 } else {
                     host_idx          = 0;
@@ -62,6 +87,26 @@ bool process_record_keychron_wireless(uint16_t keycode, keyrecord_t *record) {
                 }
             }
             break;
+
+#ifdef TRANSPORT_SOFT_SWITCH_ENABLE
+        case TP_USB:
+            if (record->event.pressed) {
+                // if (usb_power_connected())
+                {
+#    if (EECONFIG_KB_DATA_SIZE > 0)
+                    if (eeprom_read_transport() != TRANSPORT_USB) {
+                        set_transport(TRANSPORT_USB);
+                        eeprom_update_transport(TRANSPORT_USB);
+                        set_transport(TRANSPORT_USB);
+                    }
+#    else
+                    set_transport(TRANSPORT_USB);
+#    endif
+                }
+            }
+            break;
+#endif
+
 #if (defined(LED_MATRIX_ENABLE) || defined(RGB_MATRIX_ENABLE)) && defined(BAT_LEVEL_LED_LIST)
         case BAT_LVL:
             if ((get_transport() & TRANSPORT_WIRELESS) && !usb_power_connected()) {
@@ -71,6 +116,13 @@ bool process_record_keychron_wireless(uint16_t keycode, keyrecord_t *record) {
 #endif
 
         default:
+#ifdef USB_INDICATION_LED_INDEX
+            if (get_transport() == TRANSPORT_USB && !usb_power_connected()) {
+                rgb_matrix_set_suspend_state(false);
+                if (USBD1.state != USB_ACTIVE) indicator_set(WT_RECONNECTING, USB_HOST_INDEX);
+            }
+#endif
+
             break;
     }
 
@@ -120,6 +172,17 @@ void keychron_wireless_common_task(void) {
 }
 
 void wireless_pre_task(void) {
+#ifdef TRANSPORT_SOFT_SWITCH_ENABLE
+    if (get_transport() == TRANSPORT_NONE) {
+        uint8_t mode = eeprom_read_transport();
+        if (mode == 0) {
+            mode = TRANSPORT_USB;
+            eeprom_update_transport(mode);
+        }
+
+        set_transport(mode);
+    }
+#else
     static uint8_t  mode = 0;
     static uint32_t time = 0;
 
@@ -152,4 +215,5 @@ void wireless_pre_task(void) {
             time = timer_read32();
         }
     }
+#endif
 }

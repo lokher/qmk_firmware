@@ -140,6 +140,13 @@ void set_transport(transport_t new_transport) {
                 p24g_transport_enable(false);
                 wireless_disconnect();
                 lpm_timer_stop();
+                transport_changed(transport);       // Need to be called before indicator_set()
+#if defined(TRANSPORT_SOFT_SWITCH_ENABLE)
+                if (USBD1.state == USB_ACTIVE)
+                    indicator_set(WT_CONNECTED, USB_HOST_INDEX);
+                else
+                    indicator_set(WT_RECONNECTING, USB_HOST_INDEX);
+#endif
 #ifdef NKRO_ENABLE
 #    if defined(WIRELESS_NKRO_ENABLE)
                 nkro.bluetooth = keymap_config.nkro;
@@ -162,6 +169,7 @@ void set_transport(transport_t new_transport) {
                 keymap_config.nkro = FALSE;
 #    endif
 #endif
+                transport_changed(transport);
                 break;
 
             case TRANSPORT_P2P4:
@@ -178,13 +186,12 @@ void set_transport(transport_t new_transport) {
                 keymap_config.nkro = FALSE;
 #    endif
 #endif
+                transport_changed(transport);
                 break;
 
             default:
                 break;
         }
-
-        transport_changed(transport);
     }
 }
 
@@ -213,7 +220,9 @@ static void reinit_led_drvier(void) {
 
 void transport_changed(transport_t new_transport) {
     kc_printf("transport_changed %d\n\r", new_transport);
+#ifndef TRANSPORT_SOFT_SWITCH_ENABLE
     indicator_init();
+#endif
 
 #if (REINIT_LED_DRIVER)
     reinit_led_drvier();
@@ -234,17 +243,22 @@ void transport_changed(transport_t new_transport) {
 }
 
 void usb_remote_wakeup(void) {
+    usb_event_queue_task();
+
     if (USB_DRIVER.state == USB_SUSPENDED) {
         while (USB_DRIVER.state == USB_SUSPENDED) {
-            wireless_pre_task();
-            if (get_transport() != TRANSPORT_USB) {
-                suspend_wakeup_init_quantum();
+            if(!usb_power_connected()) {
+                init_usb_driver(&USBD1);
                 return;
             }
             /* Do this in the suspended state */
             suspend_power_down(); // on AVR this deep sleeps for 15ms
             /* Remote wakeup */
-            if (suspend_wakeup_condition()) {
+            if (suspend_wakeup_condition()
+#ifdef ENCODER_ENABLE
+                || encoder_read()
+#endif
+                ) {
                 usbWakeupHost(&USB_DRIVER);
                 wait_ms(300);
 #ifdef MOUSEKEY_ENABLE
@@ -272,6 +286,17 @@ void usb_remote_wakeup(void) {
 #ifdef MOUSEKEY_ENABLE
         mousekey_send();
 #endif /* MOUSEKEY_ENABLE */
-        usb_event_queue_task();
     }
 }
+
+#if (EECONFIG_KB_DATA_SIZE) == 1
+__attribute__((weak)) uint8_t eeprom_read_transport(void) {
+    uint32_t addr = EECONFIG_BASE_SIZE;
+    return eeprom_read_byte((uint8_t *)addr);
+}
+
+__attribute__((weak)) void eeprom_update_transport(uint8_t transport) {
+    uint32_t addr = EECONFIG_BASE_SIZE;
+    eeprom_update_byte((uint8_t *)addr, transport);
+}
+#endif

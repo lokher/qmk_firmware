@@ -41,9 +41,12 @@
 #    include "eeprom.h"
 #endif
 
-#define HOST_INDEX_MASK 0x0F
-#define HOST_P2P4G 0x10
+#define INDEX_MASK 0x0F
+#define P24G_IND_MASK 0x10
+#define USB_IND_MASK 0x20
 #define LED_ON 0x80
+
+#define IND_VAL_MASK (USB_IND_MASK | P24G_IND_MASK | INDEX_MASK)
 
 // #define RGB_MATRIX_TIMEOUT_INFINITE 0xFFFFFFFF
 #ifdef LED_MATRIX_ENABLE
@@ -88,11 +91,6 @@ backlight_state_t original_backlight_state;
 #    ifdef BT_HOST_LED_MATRIX_LIST
 static uint8_t bt_host_led_matrix_list[BT_HOST_DEVICES_COUNT] = BT_HOST_LED_MATRIX_LIST;
 #    endif
-
-#    ifdef P2P4G_HOST_LED_MATRIX_LIST
-static uint8_t p2p4g_host_led_matrix_list[P2P4G_HOST_DEVICES_COUNT] = P2P4G_HOST_LED_MATRIX_LIST;
-#    endif
-
 #endif
 
 #ifdef BT_HOST_LED_PIN_LIST
@@ -111,8 +109,9 @@ static pin_t p24g_led_pin_list[P24G_HOST_DEVICES_COUNT] = P24G_HOST_LED_PIN_LIST
 #    define SET_ALL_LED_OFF() led_matrix_set_value_all(0)
 #    define SET_LED_OFF(idx) led_matrix_set_value(idx, 0)
 #    define SET_LED_ON(idx) led_matrix_set_value(idx, 255)
-#    define SET_LED_BT(idx) led_matrix_set_value(idx, 255)
-#    define SET_LED_P24G(idx) led_matrix_set_value(idx, 255)
+#    define SET_LED_BT SET_LED_ON
+#    define SET_LED_P24G SET_LED_ON
+#    define SET_LED_USB SET_LED_ON
 #    define SET_LED_LOW_BAT(idx) led_matrix_set_value(idx, 255)
 #    define LED_DRIVER_IS_ENABLED led_matrix_is_enabled
 #    define LED_DRIVER_EECONFIG_RELOAD()                                                           \
@@ -140,6 +139,7 @@ static pin_t p24g_led_pin_list[P24G_HOST_DEVICES_COUNT] = P24G_HOST_LED_PIN_LIST
 #    define SET_LED_ON(idx) rgb_matrix_set_color(idx, 255, 255, 255)
 #    define SET_LED_BT(idx) rgb_matrix_set_color(idx, 0, 0, 255)
 #    define SET_LED_P24G(idx) rgb_matrix_set_color(idx, 0, 255, 0)
+#    define SET_LED_USB(idx) rgb_matrix_set_color(idx, 0, 255, 255)
 #    define SET_LED_LOW_BAT(idx) rgb_matrix_set_color(idx, 255, 0, 0)
 #    define LED_DRIVER_IS_ENABLED rgb_matrix_is_enabled
 #    define LED_DRIVER_EECONFIG_RELOAD()                                                       \
@@ -158,6 +158,7 @@ static pin_t p24g_led_pin_list[P24G_HOST_DEVICES_COUNT] = P24G_HOST_LED_PIN_LIST
 #endif
 
 bool LED_INDICATORS_KB(void);
+__attribute__((weak)) void os_state_indicate(void);
 
 void indicator_init(void) {
     memset(&indicator_config, 0, sizeof(indicator_config));
@@ -253,7 +254,7 @@ static void indicator_timer_cb(void *arg) {
                     indicator_config.value |= LED_ON;
                     next_period = indicator_config.on_time;
                 } else {
-                    indicator_config.value = indicator_config.value & 0x1F;
+                    indicator_config.value = indicator_config.value & IND_VAL_MASK;
                     next_period            = indicator_config.duration - indicator_config.on_time;
                 }
 
@@ -268,7 +269,7 @@ static void indicator_timer_cb(void *arg) {
         case INDICATOR_BLINK:
             if (indicator_config.value) {
                 if (indicator_config.value & LED_ON) {
-                    indicator_config.value = indicator_config.value & 0x1F;
+                    indicator_config.value = indicator_config.value & IND_VAL_MASK;
                     next_period            = indicator_config.off_time;
                 } else {
                     indicator_config.value |= LED_ON;
@@ -291,12 +292,12 @@ static void indicator_timer_cb(void *arg) {
 
 #if defined(BT_HOST_LED_PIN_LIST) || defined(P24G_HOST_LED_PIN_LIST)
     if (indicator_config.value) {
-        uint8_t idx = (indicator_config.value & HOST_INDEX_MASK) - 1;
+        uint8_t idx = (indicator_config.value & INDEX_MASK) - 1;
 
         pin_t  *led_lin_list = NULL;
         uint8_t led_count;
 #    if defined(P24G_HOST_LED_PIN_LIST)
-        if (indicator_config.value & HOST_P2P4G) {
+        if (indicator_config.value & P24G_IND_MASK) {
             if (idx < P24G_HOST_DEVICES_COUNT) led_lin_list = p24g_led_pin_list;
             led_count = P24G_HOST_DEVICES_COUNT;
         } else
@@ -322,7 +323,7 @@ static void indicator_timer_cb(void *arg) {
 
     if (time_up) {
         /* Set indicator to off on timeup, avoid keeping light up until next update in raindrop effect */
-        indicator_config.value = indicator_config.value & 0x1F;
+        indicator_config.value = indicator_config.value & IND_VAL_MASK;
 #if defined(LED_MATRIX_ENABLE) || defined(RGB_MATRIX_ENABLE)
         LED_INDICATORS_KB();
 #endif
@@ -334,31 +335,50 @@ static void indicator_timer_cb(void *arg) {
     if (indicator_config.value == 0) {
 #if defined(LED_MATRIX_ENABLE) || defined(RGB_MATRIX_ENABLE)
         indicator_eeconfig_reload();
-        if (!LED_DRIVER_IS_ENABLED()) indicator_disable();
+        if (!LED_DRIVER_IS_ENABLED()) {
+            SET_ALL_LED_OFF();
+            os_state_indicate();
+            LED_DRIVER.flush();
+            indicator_disable();
+        }
+
 #endif
     }
 }
 
 void indicator_set(wt_state_t state, uint8_t host_index) {
+#ifdef TRANSPORT_SOFT_SWITCH_ENABLE
+    if (get_transport() == TRANSPORT_USB && host_index != USB_HOST_INDEX) return;
+#else
     if (get_transport() == TRANSPORT_USB) return;
+#endif
 
+    static uint8_t pre_state = 0;
     static uint8_t current_state      = 0;
     static uint8_t current_host       = 0;
     bool           host_index_changed = false;
 
-    if (host_index == 24) host_index = HOST_P2P4G | 0x01;
-
+    if (host_index == P24G_HOST_INDEX)
+      host_index = P24G_IND_MASK | 0x01;
+#ifdef TRANSPORT_SOFT_SWITCH_ENABLE
+    else if (host_index == USB_HOST_INDEX)
+        host_index = USB_IND_MASK | 0x01;
+#endif
     if (current_host != host_index && state != WT_DISCONNECTED) {
         host_index_changed = true;
         current_host       = host_index;
     }
 
     if (current_state != state || host_index_changed || state == WT_RECONNECTING) {
+        // Some BT chips need to reset to enter sleep mode, ignore it.
+        if (current_state == WT_SUSPEND && state == WT_DISCONNECTED) return;
+
+        pre_state = current_state;
         current_state = state;
     } else {
         return;
     }
-
+    (void)pre_state;
     indicator_timer_buffer = timer_read32();
 
 #if defined(LED_MATRIX_ENABLE) || defined(RGB_MATRIX_ENABLE)
@@ -371,10 +391,10 @@ void indicator_set(wt_state_t state, uint8_t host_index) {
         case WT_DISCONNECTED:
 
 #if defined(BT_HOST_LED_PIN_LIST)
-            if ((host_index & HOST_P2P4G) != HOST_P2P4G) writePin(bt_led_pin_list[(host_index & HOST_INDEX_MASK) - 1], !HOST_LED_PIN_ON_STATE);
+            if ((host_index & P24G_IND_MASK) != P24G_IND_MASK) writePin(bt_led_pin_list[(host_index & INDEX_MASK) - 1], !HOST_LED_PIN_ON_STATE);
 #endif
 #if defined(P24G_HOST_LED_PIN_LIST)
-            if (host_index & HOST_P2P4G) writePin(p24g_led_pin_list[(host_index & HOST_INDEX_MASK) - 1], !HOST_LED_PIN_ON_STATE);
+            if (host_index & P24G_IND_MASK) writePin(p24g_led_pin_list[(host_index & INDEX_MASK) - 1], !HOST_LED_PIN_ON_STATE);
 #endif
 
             INDICATOR_SET(disconnected);
@@ -392,13 +412,18 @@ void indicator_set(wt_state_t state, uint8_t host_index) {
             break;
 
         case WT_CONNECTED:
-            if (indicator_state != WT_CONNECTED) {
+            if (indicator_state != WT_CONNECTED || host_index_changed) {
                 INDICATOR_SET(connected);
                 indicator_config.value = (indicator_config.type == INDICATOR_NONE) ? 0 : host_index;
                 indicator_timer_cb((void *)&indicator_config.type);
             }
 #if defined(LED_MATRIX_ENABLE) || defined(RGB_MATRIX_ENABLE)
-            indicator_set_backlit_timeout(DECIDE_TIME(CONNECTED_BACKLIGHT_DISABLE_TIMEOUT * 1000, indicator_config.duration));
+#ifdef TRANSPORT_SOFT_SWITCH_ENABLE
+            if (host_index & USB_IND_MASK)
+                indicator_set_backlit_timeout(DECIDE_TIME(0, 0));
+            else
+#endif
+                indicator_set_backlit_timeout(DECIDE_TIME(CONNECTED_BACKLIGHT_DISABLE_TIMEOUT * 1000, indicator_config.duration));
 #endif
             break;
 
@@ -416,7 +441,12 @@ void indicator_set(wt_state_t state, uint8_t host_index) {
             indicator_config.value = (indicator_config.type == INDICATOR_NONE) ? 0 : LED_ON | host_index;
             indicator_timer_cb((void *)&indicator_config.type);
 #if defined(LED_MATRIX_ENABLE) || defined(RGB_MATRIX_ENABLE)
-            indicator_set_backlit_timeout(DECIDE_TIME(DISCONNECTED_BACKLIGHT_DISABLE_TIMEOUT * 1000, indicator_config.duration));
+#ifdef TRANSPORT_SOFT_SWITCH_ENABLE
+            if (host_index & USB_IND_MASK)
+                indicator_set_backlit_timeout(DECIDE_TIME(USB_DISCONNECTED_BACKLIGHT_DISABLE_TIMEOUT * 1000, indicator_config.duration));
+            else
+#endif
+                indicator_set_backlit_timeout(DECIDE_TIME(DISCONNECTED_BACKLIGHT_DISABLE_TIMEOUT * 1000, indicator_config.duration));
 #endif
             break;
 
@@ -595,16 +625,18 @@ __attribute__((weak)) void os_state_indicate(void) {
 }
 
 bool LED_INDICATORS_KB(void) {
-    if (get_transport() & TRANSPORT_WIRELESS) {
+#ifndef TRANSPORT_SOFT_SWITCH_ENABLE
+    if (get_transport() & TRANSPORT_WIRELESS)
+#endif
+    {
         /* Prevent backlight flash caused by key activities */
         if (battery_is_critical_low()) {
             SET_ALL_LED_OFF();
             return true;
         }
 
-#    if defined(LED_MATRIX_ENABLE) || defined(RGB_MATRIX_ENABLE)
         if (battery_is_empty()) SET_ALL_LED_OFF();
-#        if defined(LOW_BAT_IND_INDEX)
+#    if defined(LOW_BAT_IND_INDEX)
         if (bat_low_ind_state && (bat_low_ind_state & 0x0F) <= LOW_BAT_LED_BLINK_TIMES) {
             uint8_t idx_list[] = LOW_BAT_IND_INDEX;
             for (uint8_t i = 0; i < sizeof(idx_list); i++) {
@@ -615,8 +647,8 @@ bool LED_INDICATORS_KB(void) {
                 }
             }
         }
-#        endif
 #    endif
+
 #    if (defined(LED_MATRIX_ENABLE) || defined(RGB_MATRIX_ENABLE)) && defined(BAT_LEVEL_LED_LIST)
         if (bat_level_animiation_actived()) {
             bat_level_animiation_indicate();
@@ -625,39 +657,55 @@ bool LED_INDICATORS_KB(void) {
         static uint8_t last_host_index = 0xFF;
 
         if (indicator_config.value) {
-            uint8_t host_index = indicator_config.value & HOST_INDEX_MASK;
+            uint8_t host_index = indicator_config.value & INDEX_MASK;
 
             if (indicator_config.highlight) {
                 SET_ALL_LED_OFF();
             } else if (last_host_index != host_index) {
-                if (indicator_config.value & HOST_P2P4G)
-                    SET_LED_OFF(p2p4g_host_led_matrix_list[host_index - 1]);
+#    ifdef P24G_INDICATION_LED_INDEX
+                if (indicator_config.value & P24G_IND_MASK)
+                    SET_LED_OFF(P24G_INDICATION_LED_INDEX);
                 else
+#    endif
+#    ifdef USB_INDICATION_LED_INDEX
+                if (indicator_config.value & USB_IND_MASK)
+                    SET_LED_OFF(USB_INDICATION_LED_INDEX);
+                else
+#    endif
                     SET_LED_OFF(bt_host_led_matrix_list[host_index - 1]);
                 last_host_index = host_index;
             }
 
             if (indicator_config.value & LED_ON) {
-#    ifdef P2P4G_HOST_LED_MATRIX_LIST
-                if (indicator_config.value & HOST_P2P4G)
-                    SET_LED_P24G(p2p4g_host_led_matrix_list[host_index - 1]);
+#    ifdef P24G_INDICATION_LED_INDEX
+                if (indicator_config.value & P24G_IND_MASK)
+                    SET_LED_P24G(P24G_INDICATION_LED_INDEX);
                 else
+#    endif
+#    ifdef USB_INDICATION_LED_INDEX
+                if (indicator_config.value & USB_IND_MASK) {
+                    SET_LED_USB(USB_INDICATION_LED_INDEX);
+                } else
 #    endif
                     SET_LED_BT(bt_host_led_matrix_list[host_index - 1]);
 
             } else {
-#    ifdef P2P4G_HOST_LED_MATRIX_LIST
-                if (indicator_config.value & HOST_P2P4G)
-                    SET_LED_OFF(p2p4g_host_led_matrix_list[host_index - 1]);
+#    ifdef P24G_INDICATION_LED_INDEX
+                if (indicator_config.value & P24G_IND_MASK)
+                    SET_LED_OFF(P24G_INDICATION_LED_INDEX);
                 else
+#    endif
+#    if USB_INDICATION_LED_INDEX
+                    if (indicator_config.value & USB_IND_MASK) {
+                    SET_LED_OFF(USB_INDICATION_LED_INDEX);
+                } else
 #    endif
                     SET_LED_OFF(bt_host_led_matrix_list[host_index - 1]);
             }
         } else
             os_state_indicate();
-
-    } else
-        os_state_indicate();
+    }
+    if (get_transport() == TRANSPORT_USB) os_state_indicate();
 
     if (!LED_INDICATORS_USER()) return true;
 

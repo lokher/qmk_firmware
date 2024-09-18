@@ -36,28 +36,37 @@ enum {
     BT_HST2,
     BT_HST3,
     P2P4G,
-    BAT_LVL,
+#if defined(TRANSPORT_SOFT_SWITCH_ENABLE)
+    TP_USB,
+    __TP_USB_NEXT,
+#else
+    __TP_USB_NEXT = P2P4G + 1,
+#endif
+    BAT_LVL = __TP_USB_NEXT,
+    __BAT_LVL_NEXT = BAT_LVL + 1,
+#else
+    BT_HST1 = _______,
+    BT_HST2 = _______,
+    BT_HST3 = _______,
+    P2P4G   = _______,
+#if defined(TRANSPORT_SOFT_SWITCH_ENABLE)
+    MD_USB  = _______,
+#endif
+    BAT_LVL = _______,
 #endif
 #ifdef ANANLOG_MATRIX
-    PROF1,
+    PROF1 = __BAT_LVL_NEXT,
     PROF2,
     PROF3,
+    __PROF3_NEXT = PROF3 + 1,
+#else
+    PROF1 = _______,
+    PROF2 = _______,
+    PROF3 = _______,
+    __PROF3_NEXT = __BAT_LVL_NEXT,
 #endif
-    NEW_SAFE_RANGE,
+    NEW_SAFE_RANGE = __PROF3_NEXT
 };
-
-#ifndef LK_WIRELESS_ENABLE
-    #define BT_HST1     KC_TRANS
-    #define BT_HST2     KC_TRANS
-    #define BT_HST3     KC_TRANS
-    #define P2P4G       KC_TRANS
-    #define BAT_LVL     KC_TRANS
-#endif
-#ifndef ANANLOG_MATRIX
-    #define PROF1 KC_TRANS
-    #define PROF2 KC_TRANS
-    #define PROF3 KC_TRANS
-#endif
 
 #define KC_TASK KC_TASK_VIEW
 #define KC_FILE KC_FILE_EXPLORER

@@ -123,6 +123,9 @@ static inline void factory_timer_check(void) {
 #ifdef LK_WIRELESS_ENABLE
             lkbt51_factory_reset(P2P4G_CELAR_MASK);
 #endif
+#ifdef TRANSPORT_SOFT_SWITCH_ENABLE
+            eeprom_update_transport(get_transport());
+#endif
         } else if (factory_reset_state == KEY_PRESS_BACKLIGTH_TEST) {
 #ifdef LED_MATRIX_ENABLE
             if (!led_matrix_is_enabled()) led_matrix_enable();
