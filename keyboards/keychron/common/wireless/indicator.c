@@ -93,6 +93,10 @@ static uint8_t bt_host_led_matrix_list[BT_HOST_DEVICES_COUNT] = BT_HOST_LED_MATR
 #    endif
 #endif
 
+#ifdef P2P4G_HOST_LED_MATRIX_LIST
+#error "P2P4G_HOST_LED_MATRIX_LIST is renamed to P24G_INDICATION_LED_INDEX, and remove the brace too"
+#endif
+
 #ifdef BT_HOST_LED_PIN_LIST
 static pin_t bt_led_pin_list[BT_HOST_DEVICES_COUNT] = BT_HOST_LED_PIN_LIST;
 #endif
